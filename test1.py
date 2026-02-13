@@ -61,7 +61,7 @@ CATALOG = args["CATALOG"]
 log_bucket = args["log_bucket"]
 raw_file_folder = args["raw_file_folder"].strip().rstrip("/")
 data_bucket = args["data_bucket"].strip().rstrip("/")
-input_temp=args["input_temp"]
+# input_temp=args["input_temp"]  # Not used anymore
 
 # -------------------------------------------------------------------------
 # Validate critical parameters early
@@ -130,26 +130,28 @@ def archive_raw_file(target_table, csv_key):
         Key=archive_key
     )
     s3.delete_object(Bucket=data_bucket, Key=csv_key)
-    logger.info(f"Archived CSV → s3://{data_bucket}/{archive_key}")
+    logger.info(f"Archived TXT → s3://{data_bucket}/{archive_key}")
 
-# Lookup CSV in input folder (must be exactly one)
+# -------------------------------------------------------------------------
+# Lookup TXT in input folder (must be exactly one)
+# -------------------------------------------------------------------------
 def get_raw_file(bucket, prefix):
     resp = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
     if "Contents" not in resp:
         raise ValueError(f"No data found under: s3://{bucket}/{prefix}")
         
-    txt_files = [obj["Key"] for obj in resp["Contents"] if obj["Key"].endswith((".csv", ".txt"))]
+    txt_files = [obj["Key"] for obj in resp["Contents"] if obj["Key"].lower().endswith((".txt"))] # Only consider .txt files
     if len(txt_files) != 1:
-        raise ValueError(f"Expected 1 CSV under {prefix}, found {len(txt_files)}")
+        raise ValueError(f"Expected 1 TXT under {prefix}, found {len(txt_files)}")
 
     return txt_files[0]  # key only
  
 # Convert JSON schema → Spark StructType
-def get_table_schema(entry):
-    schema = entry["spark_schema"]
-    for f in schema["fields"]:
-        f.setdefault("metadata", {})
-    return StructType.fromJson(schema)
+# def get_table_schema(entry):
+#     schema = entry["spark_schema"]
+#     for f in schema["fields"]:
+#         f.setdefault("metadata", {})
+#     return StructType.fromJson(schema)
     
 print("==== JOB STARTED ====")
 
@@ -181,19 +183,25 @@ def read_file(csv_key):
         raise Exception("Header file is empty")
 
     # -------------------------------------------------------------------------
-    # Read source data
+    # Read source data (.txt)
     # -------------------------------------------------------------------------
-    print(f"Reading source data file from: {SRC_PATH}")
-    #prefix = f"{raw_file_folder}/{SRC_PATH}/"
-    SRC_FILE=f"{SRC_PATH}/{csv_key}"
+    # print(f"Reading source data file from: {SRC_PATH}")
+    # #prefix = f"{raw_file_folder}/{SRC_PATH}/"
+    # SRC_FILE=f"{SRC_PATH}/{csv_key}"
     #try:
     #    spark_schema = get_table_schema(entry)
     #    schema_json = entry["spark_schema"]
     #    csv_options = entry.get("options", {})
 
-    #try:
-    raw_df = spark.read.text(input_temp)
-    print(f"Raw source row count (sampled): {raw_df.limit(10).count()}")
+    # #try:
+    # raw_df = spark.read.text(input_temp)
+    # print(f"Raw source row count (sampled): {raw_df.limit(10).count()}")
+    
+    
+    full_path = f"s3://{data_bucket}/{csv_key}"
+    print(f"Reading TXT source file from: {full_path}")
+
+    raw_df = spark.read.text(full_path)
 
     # -------------------------------------------------------------------------
     # Parse fixed-width records
@@ -216,16 +224,16 @@ def read_file(csv_key):
     #    logger.warning(f"[SKIPPED] TGT_TBL: {str(e)}")
     #    write_log(TGT_TBL, f"SKIPPED: {str(e)}")
     #    return
-    print("Parsed DataFrame schema:")
-    parsed_df.printSchema()
+    #print("Parsed DataFrame schema:")
+    #parsed_df.printSchema()
 
-    print("Parsed DataFrame sample rows:")
-    parsed_df.show(5, truncate=False)
+    #print("Parsed DataFrame sample rows:")
+    #parsed_df.show(5, truncate=False)
     #return parsed_df
     # -------------------------------------------------------------------------
     # Write to Iceberg
     # -------------------------------------------------------------------------
-    print(f"Writing data to Iceberg table: {TARGET_IDENTIFIER}")
+    #print(f"Writing data to Iceberg table: {TARGET_IDENTIFIER}")
 
     
     #def create_table(parsed_df):
@@ -255,11 +263,15 @@ def main():
         logger.warning(f"[SKIPPED] {TGT_TBL}: {str(e)}")
         write_log(TGT_TBL, f"SKIPPED: {str(e)}")
         return
+
     try:
         read_file(csv_key)
         #if partition_flag == 'Y':
         #    df = df.withColumn(partition_col, F.col(partition_col))
         #create_table(df)
+        # Archive only after successful write
+        archive_raw_file(TGT_TBL, csv_key)
+
         job.commit()
         logger.info("Glue job completed successfully")
     except Exception as e:
