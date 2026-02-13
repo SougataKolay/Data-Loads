@@ -203,68 +203,25 @@ def process_file(csv_key):
         .withColumn("TransType", col("TRANS").cast(StringType()))
         .withColumn("Extract_T", current_timestamp())
         #.withColumn("Extract_T", lit(None).cast(TimestampType()))
-        # .select(
-        #     "ClubName", "ClubNo", "RegionNo", "GroupCode",
-        #     "SubGroupCode", "AgentType", "CampaignCode",
-        #     "CampaignType", "TransactionDate", "AdminFee",
-        #     "PrimaryIndicator", "AdultIndicator", "DependantIndicator",
-        #     "PlusProductIndicator", "FamilyPlusIndicator",
-        #     "PremierProductIndicator", "FamilyPremierIndicator",
-        #     "RVCyIIndicator", "ARIndicator", "MemberNo",
-        #     "SalesRegion", "OfficeNo", "OfficaName", "EmployeeNo",
-        #     "AgentID", "JobCode", "Rolecode", "TransType", "Extract_T"
-        # )
+        .select(
+            "ClubName", "ClubNo", "RegionNo", "GroupCode",
+            "SubGroupCode", "AgentType", "CampaignCode",
+            "CampaignType", "TransactionDate", "AdminFee",
+            "PrimaryIndicator", "AdultIndicator", "DependantIndicator",
+            "PlusProductIndicator", "FamilyPlusIndicator",
+            "PremierProductIndicator", "FamilyPremierIndicator",
+            "RVCyIIndicator", "ARIndicator", "MemberNo",
+            "SalesRegion", "OfficeNo", "OfficaName", "EmployeeNo",
+            "AgentID", "JobCode", "Rolecode", "TransType", "Extract_T"
+        )
     )
-
-    # ---------------------------------------------------------------------
-    # Define Final Schema Explicitly
-    # ---------------------------------------------------------------------
-    final_schema = StructType([
-        StructField("ClubName", StringType(), True),
-        StructField("ClubNo", StringType(), True),
-        StructField("RegionNo", StringType(), True),
-        StructField("GroupCode", StringType(), True),
-        StructField("SubGroupCode", StringType(), True),
-        StructField("AgentType", StringType(), True),
-        StructField("CampaignCode", StringType(), True),
-        StructField("CampaignType", StringType(), True),
-        StructField("TransactionDate", DateType(), True),
-        StructField("AdminFee", DecimalType(18,2), True),
-        StructField("PrimaryIndicator", StringType(), True),
-        StructField("AdultIndicator", StringType(), True),
-        StructField("DependantIndicator", StringType(), True),
-        StructField("PlusProductIndicator", StringType(), True),
-        StructField("FamilyPlusIndicator", StringType(), True),
-        StructField("PremierProductIndicator", StringType(), True),
-        StructField("FamilyPremierIndicator", StringType(), True),
-        StructField("RVCyIIndicator", StringType(), True),
-        StructField("ARIndicator", StringType(), True),
-        StructField("MemberNo", StringType(), True),
-        StructField("SalesRegion", StringType(), True),
-        StructField("OfficeNo", StringType(), True),
-        StructField("OfficaName", StringType(), True),
-        StructField("EmployeeNo", StringType(), True),
-        StructField("AgentID", StringType(), True),
-        StructField("JobCode", StringType(), True),
-        StructField("Rolecode", StringType(), True),
-        StructField("TransType", StringType(), True),
-        StructField("Extract_T", TimestampType(), True)
-    ])
-
-    # ---------------------------------------------------------------------
-    # Enforce Final Column Order
-    # ---------------------------------------------------------------------
-    final_df = structured_df.select([field.name for field in final_schema.fields])
-
-    logger.info("Final schema enforced:")
-    final_df.printSchema()
 
     # ---------------------------------------------------------------------
     # Write to Iceberg
     # ---------------------------------------------------------------------
     logger.info(f"Writing to Iceberg table: {TARGET_IDENTIFIER}")
 
-    final_df.createOrReplaceTempView("staging_table")
+    structured_df.createOrReplaceTempView("staging_table")
 
     spark.sql(f"""
         CREATE OR REPLACE TABLE {TARGET_IDENTIFIER}
