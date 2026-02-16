@@ -1,7 +1,6 @@
 import sys
 import logging
 from urllib import response
-from urllib import response
 import boto3, re, traceback
 from datetime import datetime
 from urllib.parse import urlparse
@@ -165,11 +164,30 @@ def process_file(csv_key):
         spark.read
         .option("header", "true")
         .option("inferSchema", "false")
-        .option("trimValues", "true")
+        #.option("trimValues", "true")
+        .option("ignoreLeadingWhiteSpace", "true")
+        .option("ignoreTrailingWhiteSpace", "true")
         .csv(full_path)
     )
 
     logger.info(f"Detected columns: {df.columns}")
+    
+    # ---------------------------------------------------------------------
+    # Validate Column Count and Handle Trailing Comma
+    # ---------------------------------------------------------------------
+    num_cols = len(df.columns)
+    logger.info(f"Column count: {num_cols}")
+    
+    if num_cols not in (28, 29):
+        raise ValueError(f"Unexpected column count: {num_cols}. Expected 28 or 29 columns.")
+    
+    has_trailing_comma = (num_cols == 29)
+    if has_trailing_comma:
+        extra_column_name = df.columns[-1]
+        logger.info(f"Detected trailing comma column: '{extra_column_name}' - will handle as Extract_T")
+        # Drop the trailing comma column BEFORE transformation
+        df = df.drop(extra_column_name)
+        logger.info(f"Dropped trailing comma column: '{extra_column_name}'")
 
     structured_df = (
         df
@@ -195,14 +213,14 @@ def process_file(csv_key):
         .withColumn("MemberNo", col("MEMBER #").cast(StringType()))
         .withColumn("SalesRegion", col("SALES REGION").cast(StringType()))
         .withColumn("OfficeNo", col("DO").cast(StringType()))
-        .withColumn("OfficaName", col("DO NAME").cast(StringType()))
+        .withColumn("OfficeName", col("DO NAME").cast(StringType()))
         .withColumn("EmployeeNo", col("EMPLOYEE #").cast(StringType()))
         .withColumn("AgentID", col("AGENT ID").cast(StringType()))
         .withColumn("JobCode", col("JOB").cast(StringType()))
         .withColumn("Rolecode", col("ROLE").cast(StringType()))
         .withColumn("TransType", col("TRANS").cast(StringType()))
-        .withColumn("Extract_T", current_timestamp())
-        #.withColumn("Extract_T", lit(None).cast(TimestampType()))
+        #.withColumn("Extract_T", current_timestamp())
+        .withColumn("Extract_T", lit(None).cast(TimestampType()))
         .select(
             "ClubName", "ClubNo", "RegionNo", "GroupCode",
             "SubGroupCode", "AgentType", "CampaignCode",
@@ -211,10 +229,11 @@ def process_file(csv_key):
             "PlusProductIndicator", "FamilyPlusIndicator",
             "PremierProductIndicator", "FamilyPremierIndicator",
             "RVCyIIndicator", "ARIndicator", "MemberNo",
-            "SalesRegion", "OfficeNo", "OfficaName", "EmployeeNo",
+            "SalesRegion", "OfficeNo", "OfficeName", "EmployeeNo",
             "AgentID", "JobCode", "Rolecode", "TransType", "Extract_T"
         )
     )
+
 
     # ---------------------------------------------------------------------
     # Write to Iceberg
