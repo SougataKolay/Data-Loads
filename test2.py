@@ -65,7 +65,7 @@ data_bucket = args["data_bucket"].strip().rstrip("/")
 log_bucket = args["log_bucket"]
 
 W1_TABLE = f"{CATALOG}.{TGT_DB}.mbrship_sales_trans_w1"
-BASE_TABLE = f"{CATALOG}.{TGT_DB}.mbrship_sales_trans_by_week"
+BASE_TABLE = f"{CATALOG}.{TGT_DB}.{TGT_TBL}"
 
 # -------------------------------------------------------------------------
 # Spark / Iceberg Initialization
@@ -97,14 +97,14 @@ job.init(args["JOB_NAME"], args)
 def write_log(target_table, message):
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     safe_table = re.sub(r'[^A-Za-z0-9_]+', '_', target_table)
-    
+
     LOG_BUCKET = args["log_bucket"]
     log_key = f"glue_logs/{safe_table}_{timestamp}.txt"
 
     resp = s3.list_objects_v2(Bucket=LOG_BUCKET, Prefix="glue_logs/", MaxKeys=1)
     if 'Contents' not in resp:
         s3.put_object(Bucket=LOG_BUCKET, Key="glue_logs/", Body=b'')
-        
+
     s3.put_object(
         Bucket=LOG_BUCKET,
         Key=log_key,
@@ -134,7 +134,8 @@ def get_raw_file(bucket, prefix):
     txt_files = [
         obj["Key"]
         for obj in resp.get("Contents", [])
-        if obj["Key"].endswith(".txt")
+        # if obj["Key"].endswith(".txt")
+        if obj["Key"].endswith(".G0875V00")
     ]
 
     if len(txt_files) != 1:
@@ -147,10 +148,10 @@ def get_raw_file(bucket, prefix):
 # -------------------------------------------------------------------------
 
 def process_file(csv_key):
-
+    print("csf key = ", csv_key)
     full_path = f"s3://{data_bucket}/{csv_key}"
     logger.info(f"Reading file: {full_path}")
-
+    print("full Path = ",full_path)
     df = (
         spark.read
         .option("header", "true")
@@ -163,47 +164,83 @@ def process_file(csv_key):
 
     num_cols = len(df.columns)
 
-    # if num_cols not in (28, 29):
-        # raise ValueError(f"Unexpected column count: {num_cols}")
+    if num_cols not in (28, 29):
+        raise ValueError(f"Unexpected column count: {num_cols}")
 
     if num_cols == 29:
         extra_column_name = df.columns[-1]
         df = df.drop(extra_column_name)
 
-    structured_df = (
-        df
-        .withColumn("ClubName", col("CLUB NAME").cast(StringType()))
-        .withColumn("ClubNo", col("CLUB NO").cast(StringType()))
-        .withColumn("RegionNo", col("CLUB REGION").cast(StringType()))
-        .withColumn("GroupCode", col("GROUP").cast(StringType()))
-        .withColumn("SubGroupCode", col("SUB GROUP").cast(StringType()))
-        .withColumn("AgentType", col("AGENT").cast(StringType()))
-        .withColumn("CampaignCode", col("CAMPAIGN").cast(StringType()))
-        .withColumn("CampaignType", col("CAMPAIGN TYPE").cast(StringType()))
-        .withColumn("TransactionDate", col("TRAN DATE").cast(DateType()))
-        .withColumn("AdminFee", col("ADMIN FEE").cast(DecimalType(18,2)))
-        .withColumn("PrimaryIndicator", col("PRIMARY").cast(StringType()))
-        .withColumn("AdultIndicator", col("ADULT").cast(StringType()))
-        .withColumn("DependantIndicator", col("DEPENDENT").cast(StringType()))
-        .withColumn("PlusProductIndicator", col("IND PLUS").cast(StringType()))
-        .withColumn("FamilyPlusIndicator", col("FAM PLUS").cast(StringType()))
-        .withColumn("PremierProductIndicator", col("IND-PREMIER").cast(StringType()))
-        .withColumn("FamilyPremierIndicator", col("FAM PREMIER").cast(StringType()))
-        .withColumn("RVCyIIndicator", col("RV/CYL").cast(StringType()))
-        .withColumn("ARIndicator", col("A/R").cast(StringType()))
-        .withColumn("MemberNo", col("MEMBER #").cast(StringType()))
-        .withColumn("SalesRegion", col("SALES REGION").cast(StringType()))
-        .withColumn("OfficeNo", col("DO").cast(StringType()))
-        .withColumn("OfficeName", col("DO NAME").cast(StringType()))
-        .withColumn("EmployeeNo", col("EMPLOYEE #").cast(StringType()))
-        .withColumn("AgentID", col("AGENT ID").cast(StringType()))
-        .withColumn("JobCode", col("JOB").cast(StringType()))
-        .withColumn("Rolecode", col("ROLE").cast(StringType()))
-        .withColumn("TransType", col("TRANS").cast(StringType()))
-        #.withColumn("Extract_T", current_timestamp())
-        .withColumn("Extract_T", lit(None).cast(TimestampType()))
-        .select("*")
-    )
+    # structured_df = (
+    #     df
+    #     .withColumnRenamed("ClubName", col("CLUB NAME").cast(StringType()))
+    #     .withColumnRenamed("ClubNo", col("CLUB NO").cast(StringType()))
+    #     .withColumnRenamed("RegionNo", col("CLUB REGION").cast(StringType()))
+    #     .withColumnRenamed("GroupCode", col("GROUP").cast(StringType()))
+    #     .withColumnRenamed("SubGroupCode", col("SUB GROUP").cast(StringType()))
+    #     .withColumnRenamed("AgentType", col("AGENT").cast(StringType()))
+    #     .withColumnRenamed("CampaignCode", col("CAMPAIGN").cast(StringType()))
+    #     .withColumnRenamed("CampaignType", col("CAMPAIGN TYPE").cast(StringType()))
+    #     .withColumnRenamed("TransactionDate", col("TRAN DATE").cast(DateType()))
+    #     .withColumnRenamed("AdminFee", col("ADMIN FEE").cast(DecimalType(18,2)))
+    #     .withColumnRenamed("PrimaryIndicator", col("PRIMARY").cast(StringType()))
+    #     .withColumnRenamed("AdultIndicator", col("ADULT").cast(StringType()))
+    #     .withColumnRenamed("DependantIndicator", col("DEPENDENT").cast(StringType()))
+    #     .withColumnRenamed("PlusProductIndicator", col("IND PLUS").cast(StringType()))
+    #     .withColumnRenamed("FamilyPlusIndicator", col("FAM PLUS").cast(StringType()))
+    #     .withColumnRenamed("PremierProductIndicator", col("IND-PREMIER").cast(StringType()))
+    #     .withColumnRenamed("FamilyPremierIndicator", col("FAM PREMIER").cast(StringType()))
+    #     .withColumnRenamed("RVCyIIndicator", col("RV/CYL").cast(StringType()))
+    #     .withColumnRenamed("ARIndicator", col("A/R").cast(StringType()))
+    #     .withColumnRenamed("MemberNo", col("MEMBER #").cast(StringType()))
+    #     .withColumnRenamed("SalesRegion", col("SALES REGION").cast(StringType()))
+    #     .withColumnRenamed("OfficeNo", col("DO").cast(StringType()))
+    #     .withColumnRenamed("OfficeName", col("DO NAME").cast(StringType()))
+    #     .withColumnRenamed("EmployeeNo", col("EMPLOYEE #").cast(StringType()))
+    #     .withColumnRenamed("AgentID", col("AGENT ID").cast(StringType()))
+    #     .withColumnRenamed("JobCode", col("JOB").cast(StringType()))
+    #     .withColumnRenamed("Rolecode", col("ROLE").cast(StringType()))
+    #     .withColumnRenamed("TransType", col("TRANS").cast(StringType()))
+    #     #.withColumn("Extract_T", current_timestamp())
+    #     .withColumn("Extract_T", lit(None).cast(TimestampType()))
+    #     #.select("*")
+    # )
+
+    # structured_df = df.selectExpr(
+    # "CAST(ClubName AS StringType) AS CLUB NAME" )
+
+    structured_df = df.selectExpr(
+        "CAST(`CLUB NAME` AS STRING) AS ClubName",
+        "CAST(`CLUB NO` AS STRING) AS ClubNo",
+        "CAST(`CLUB REGION` AS STRING) AS RegionNo",
+        "CAST(`GROUP` AS STRING) AS GroupCode",
+        "CAST(`SUB GROUP` AS STRING) AS SubGroupCode",
+        "CAST(`AGENT` AS STRING) AS AgentType",
+        "CAST(`CAMPAIGN` AS STRING) AS CampaignCode",
+        "CAST(`CAMPAIGN TYPE` AS STRING) AS CampaignType",
+        "CAST(`TRAN DATE` AS DATE) AS TransactionDate",
+        "CAST(`ADMIN FEE` AS DECIMAL(18,2)) AS AdminFee",
+        "CAST(`PRIMARY` AS STRING) AS PrimaryIndicator",
+        "CAST(`ADULT` AS STRING) AS AdultIndicator",
+        "CAST(`DEPENDENT` AS STRING) AS DependantIndicator",
+        "CAST(`IND PLUS` AS STRING) AS PlusProductIndicator",
+        "CAST(`FAM PLUS` AS STRING) AS FamilyPlusIndicator",
+        "CAST(`IND-PREMIER` AS STRING) AS PremierProductIndicator",
+        "CAST(`FAM PREMIER` AS STRING) AS FamilyPremierIndicator",
+        "CAST(`RV/CYL` AS STRING) AS RVCyIIndicator",
+        "CAST(`A/R` AS STRING) AS ARIndicator",
+        "CAST(`MEMBER #` AS STRING) AS MemberNo",
+        "CAST(`SALES REGION` AS STRING) AS SalesRegion",
+        "CAST(`DO` AS STRING) AS OfficeNo",
+        "CAST(`DO NAME` AS STRING) AS OfficeName",
+        "CAST(`EMPLOYEE #` AS STRING) AS EmployeeNo",
+        "CAST(`AGENT ID` AS STRING) AS AgentID",
+        "CAST(`JOB` AS STRING) AS JobCode",
+        "CAST(`ROLE` AS STRING) AS Rolecode",
+        "CAST(`TRANS` AS STRING) AS TransType",
+        "CAST(NULL AS TIMESTAMP) AS Extract_T"
+        )
+
 
     # structured_df.createOrReplaceTempView("staging_table")
 
@@ -216,23 +253,23 @@ def process_file(csv_key):
     #     AS
     #     SELECT * FROM staging_table
     # """)
-    
+
     structured_df.writeTo(W1_TABLE).using("iceberg").createOrReplace()
 
     # ------------------------------------------------------------
     # 2. DELETE BASE TABLE DATA (BASED ON (TRANSACTIONDATE div 100))
     # ------------------------------------------------------------
-    spark.sql(f"""
-        Delete From {BASE_TABLE} where (transactiondate div 100) in (select distinct (transactiondate div 100) from {W1_TABLE})
-    """)
+    # spark.sql(f"""
+    #     Delete From {BASE_TABLE} where (transactiondate div 100) in (select distinct (transactiondate div 100) from {W1_TABLE})
+    # """)
 
     # ------------------------------------------------------------
     # 3. INSERT FROM W1 TO BASE TABLE
     # ------------------------------------------------------------
-    spark.sql(f"""
-        INSERT INTO {BASE_TABLE}
-        SELECT * FROM {W1_TABLE}
-    """)
+    # spark.sql(f"""
+    #     INSERT INTO {BASE_TABLE}
+    #     SELECT * FROM {W1_TABLE}
+    # """)
 
     archive_raw_file(TGT_TBL, csv_key)
     write_log(TGT_TBL, "Job completed successfully")
@@ -256,3 +293,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+ 
