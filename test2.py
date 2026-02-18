@@ -97,14 +97,14 @@ job.init(args["JOB_NAME"], args)
 def write_log(target_table, message):
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     safe_table = re.sub(r'[^A-Za-z0-9_]+', '_', target_table)
-
+    
     LOG_BUCKET = args["log_bucket"]
     log_key = f"glue_logs/{safe_table}_{timestamp}.txt"
 
     resp = s3.list_objects_v2(Bucket=LOG_BUCKET, Prefix="glue_logs/", MaxKeys=1)
     if 'Contents' not in resp:
         s3.put_object(Bucket=LOG_BUCKET, Key="glue_logs/", Body=b'')
-
+        
     s3.put_object(
         Bucket=LOG_BUCKET,
         Key=log_key,
@@ -205,10 +205,11 @@ def process_file(csv_key):
     #     .withColumn("Extract_T", lit(None).cast(TimestampType()))
     #     #.select("*")
     # )
-
+    
     # structured_df = df.selectExpr(
     # "CAST(ClubName AS StringType) AS CLUB NAME" )
-
+    
+        
     structured_df = df.selectExpr(
         "CAST(`CLUB NAME` AS STRING) AS ClubName",
         "CAST(`CLUB NO` AS STRING) AS ClubNo",
@@ -239,9 +240,9 @@ def process_file(csv_key):
         "CAST(`ROLE` AS STRING) AS Rolecode",
         "CAST(`TRANS` AS STRING) AS TransType",
         "CAST(NULL AS TIMESTAMP) AS Extract_T"
-        )
+    )
 
-
+    
     # structured_df.createOrReplaceTempView("staging_table")
 
     # ------------------------------------------------------------
@@ -253,23 +254,28 @@ def process_file(csv_key):
     #     AS
     #     SELECT * FROM staging_table
     # """)
-
+    
     structured_df.writeTo(W1_TABLE).using("iceberg").createOrReplace()
 
     # ------------------------------------------------------------
     # 2. DELETE BASE TABLE DATA (BASED ON (TRANSACTIONDATE div 100))
     # ------------------------------------------------------------
-    # spark.sql(f"""
-    #     Delete From {BASE_TABLE} where (transactiondate div 100) in (select distinct (transactiondate div 100) from {W1_TABLE})
-    # """)
+    spark.sql(f"""
+     DELETE FROM {BASE_TABLE}
+     WHERE date_format(TransactionDate, 'yyyyMM')
+     IN (
+        SELECT DISTINCT date_format(TransactionDate, 'yyyyMM')
+        FROM {W1_TABLE}
+         )
+    """)
 
     # ------------------------------------------------------------
     # 3. INSERT FROM W1 TO BASE TABLE
     # ------------------------------------------------------------
-    # spark.sql(f"""
-    #     INSERT INTO {BASE_TABLE}
-    #     SELECT * FROM {W1_TABLE}
-    # """)
+    spark.sql(f"""
+        INSERT INTO {BASE_TABLE}
+        SELECT * FROM {W1_TABLE}
+    """)
 
     archive_raw_file(TGT_TBL, csv_key)
     write_log(TGT_TBL, "Job completed successfully")
@@ -293,4 +299,3 @@ def main():
 
 if __name__ == "__main__":
     main()
- 
