@@ -1,3 +1,10 @@
+'''
+1. Reads a single file from S3 (under raw_file_folder/table_name/) 
+2. Writes to W1 staging table by dropping and recreating it
+3. Deletes from base table based on TransactionDate (yyyyMM) that are present in W1
+4. Inserts from W1 to base table
+'''
+
 import sys
 import logging
 from urllib import response
@@ -243,9 +250,6 @@ def process_file(csv_key):
     )
 
     
-    
-    
-
     # structured_df.createOrReplaceTempView("staging_table")
 
     # ------------------------------------------------------------
